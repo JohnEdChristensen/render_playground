@@ -6,10 +6,7 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn new(
-        device: &wgpu::Device,
-        texture_format: wgpu::TextureFormat,
-    ) -> Scene {
+    pub fn new(device: &wgpu::Device, texture_format: wgpu::TextureFormat) -> Scene {
         let pipeline = build_pipeline(device, texture_format);
 
         Scene { pipeline }
@@ -60,25 +57,23 @@ fn build_pipeline(
         device.create_shader_module(wgpu::include_wgsl!("shader/frag.wgsl")),
     );
 
-    let pipeline_layout =
-        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: None,
-            push_constant_ranges: &[],
-            bind_group_layouts: &[],
-        });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: None,
+        push_constant_ranges: &[],
+        bind_group_layouts: &[],
+    });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: None,
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
             module: &vs_module,
-            entry_point: Some("main"),
+            entry_point: "main",
             buffers: &[],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &fs_module,
-            entry_point: Some("main"),
+            entry_point: "main",
             targets: &[Some(wgpu::ColorTargetState {
                 format: texture_format,
                 blend: Some(wgpu::BlendState {
@@ -87,7 +82,6 @@ fn build_pipeline(
                 }),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
@@ -101,6 +95,5 @@ fn build_pipeline(
             alpha_to_coverage_enabled: false,
         },
         multiview: None,
-        cache: None,
     })
 }

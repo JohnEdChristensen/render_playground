@@ -974,7 +974,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73558208059f9e622df2bf434e044ee2f838ce75201a023cf0ca3e1244f46c2a"
 dependencies = [
  "iced_graphics",
- "iced_wgpu",
+ "iced_wgpu 0.13.5",
  "log",
  "thiserror",
 ]
@@ -990,6 +990,20 @@ dependencies = [
  "iced_futures",
  "raw-window-handle",
  "thiserror",
+]
+
+[[package]]
+name = "iced_wgpu"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "console_log",
+ "iced_wgpu 0.13.5",
+ "iced_widget",
+ "iced_winit",
+ "tracing-subscriber",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -1064,20 +1078,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "integration"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "console_log",
- "iced_wgpu",
- "iced_widget",
- "iced_winit",
- "tracing-subscriber",
- "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]

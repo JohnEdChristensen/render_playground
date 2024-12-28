@@ -78,8 +78,7 @@ impl Program for Controls {
             column![
                 text("Background color").color(Color::WHITE),
                 text!("{background_color:?}").size(14).color(Color::WHITE),
-                text_input("Placeholder", &self.input)
-                    .on_input(Message::InputChanged),
+                text_input("Placeholder", &self.input).on_input(Message::InputChanged),
                 sliders,
             ]
             .spacing(10),

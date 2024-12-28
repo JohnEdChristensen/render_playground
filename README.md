@@ -1,17 +1,5 @@
-## `wgpu` integration
+Template for integrating iced and wgpu into a winit window.
 
-A demonstration of how to integrate Iced in an existing [`wgpu`] application.
+adapted from `iced/examples/integration`
 
-The __[`main`]__ file contains all the code of the example.
-
-<div align="center">
-  <img src="https://iced.rs/examples/integration.gif">
-</div>
-
-You can run it with `cargo run`:
-```
-cargo run --package integration
-```
-
-[`main`]: src/main.rs
-[`wgpu`]: https://github.com/gfx-rs/wgpu
+wasm build is not currently working.

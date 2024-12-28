@@ -2,6 +2,7 @@ mod controls;
 mod scene;
 
 use controls::Controls;
+use iced_winit::winit::dpi::PhysicalSize;
 use scene::Scene;
 
 use iced_wgpu::graphics::Viewport;
@@ -25,6 +26,13 @@ use winit::{
 use std::sync::Arc;
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        console_log::init().expect("Initialize logger");
+        std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     tracing_subscriber::fmt::init();
 
     // Initialize winit
@@ -58,7 +66,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 let window = Arc::new(
                     event_loop
                         .create_window(
-                            winit::window::WindowAttributes::default(),
+                            winit::window::WindowAttributes::default()
+                                .with_inner_size(PhysicalSize::new(800, 1200)),
                         )
                         .expect("Create window"),
                 );
@@ -70,8 +79,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 );
                 let clipboard = Clipboard::connect(window.clone());
 
-                let backend =
-                    wgpu::util::backend_bits_from_env().unwrap_or_default();
+                let backend = wgpu::util::backend_bits_from_env().unwrap_or_default();
 
                 let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
                     backends: backend,
@@ -83,13 +91,12 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                 let (format, adapter, device, queue) =
                     futures::futures::executor::block_on(async {
-                        let adapter =
-                            wgpu::util::initialize_adapter_from_env_or_default(
-                                &instance,
-                                Some(&surface),
-                            )
-                            .await
-                            .expect("Create adapter");
+                        let adapter = wgpu::util::initialize_adapter_from_env_or_default(
+                            &instance,
+                            Some(&surface),
+                        )
+                        .await
+                        .expect("Create adapter");
 
                         let adapter_features = adapter.features();
 
@@ -99,11 +106,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             .request_device(
                                 &wgpu::DeviceDescriptor {
                                     label: None,
-                                    required_features: adapter_features
-                                        & wgpu::Features::default(),
+                                    required_features: adapter_features & wgpu::Features::default(),
                                     required_limits: wgpu::Limits::default(),
-                                    memory_hints:
-                                        wgpu::MemoryHints::MemoryUsage,
                                 },
                                 None,
                             )
@@ -116,9 +120,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 .iter()
                                 .copied()
                                 .find(wgpu::TextureFormat::is_srgb)
-                                .or_else(|| {
-                                    capabilities.formats.first().copied()
-                                })
+                                .or_else(|| capabilities.formats.first().copied())
                                 .expect("Get preferred format"),
                             adapter,
                             device,
@@ -146,14 +148,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                 // Initialize iced
                 let mut debug = Debug::new();
-                let engine =
-                    Engine::new(&adapter, &device, &queue, format, None);
-                let mut renderer = Renderer::new(
-                    &device,
-                    &engine,
-                    Font::default(),
-                    Pixels::from(16),
-                );
+                let engine = Engine::new(&adapter, &device, &queue, format, None);
+                let mut renderer =
+                    Renderer::new(&device, &engine, Font::default(), Pixels::from(16));
 
                 let state = program::State::new(
                     controls,
@@ -241,23 +238,21 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                     match surface.get_current_texture() {
                         Ok(frame) => {
-                            let mut encoder = device.create_command_encoder(
-                                &wgpu::CommandEncoderDescriptor { label: None },
-                            );
+                            let mut encoder =
+                                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                    label: None,
+                                });
 
                             let program = state.program();
 
-                            let view = frame.texture.create_view(
-                                &wgpu::TextureViewDescriptor::default(),
-                            );
+                            let view = frame
+                                .texture
+                                .create_view(&wgpu::TextureViewDescriptor::default());
 
                             {
                                 // We clear the frame
-                                let mut render_pass = Scene::clear(
-                                    &view,
-                                    &mut encoder,
-                                    program.background_color(),
-                                );
+                                let mut render_pass =
+                                    Scene::clear(&view, &mut encoder, program.background_color());
 
                                 // Draw the scene
                                 scene.draw(&mut render_pass);
@@ -281,11 +276,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             frame.present();
 
                             // Update the mouse cursor
-                            window.set_cursor(
-                                iced_winit::conversion::mouse_interaction(
-                                    state.mouse_interaction(),
-                                ),
-                            );
+                            window.set_cursor(iced_winit::conversion::mouse_interaction(
+                                state.mouse_interaction(),
+                            ));
                         }
                         Err(error) => match error {
                             wgpu::SurfaceError::OutOfMemory => {
@@ -317,11 +310,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             }
 
             // Map window event to iced event
-            if let Some(event) = iced_winit::conversion::window_event(
-                event,
-                window.scale_factor(),
-                *modifiers,
-            ) {
+            if let Some(event) =
+                iced_winit::conversion::window_event(event, window.scale_factor(), *modifiers)
+            {
                 state.queue_event(event);
             }
 
@@ -331,12 +322,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 let _ = state.update(
                     viewport.logical_size(),
                     cursor_position
-                        .map(|p| {
-                            conversion::cursor_position(
-                                p,
-                                viewport.scale_factor(),
-                            )
-                        })
+                        .map(|p| conversion::cursor_position(p, viewport.scale_factor()))
                         .map(mouse::Cursor::Available)
                         .unwrap_or(mouse::Cursor::Unavailable),
                     renderer,
