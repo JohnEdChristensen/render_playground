@@ -128,22 +128,24 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         )
                     });
 
-                surface.configure(
-                    &device,
-                    &wgpu::SurfaceConfiguration {
-                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                        format,
-                        width: physical_size.width,
-                        height: physical_size.height,
-                        present_mode: wgpu::PresentMode::AutoVsync,
-                        alpha_mode: wgpu::CompositeAlphaMode::Auto,
-                        view_formats: vec![],
-                        desired_maximum_frame_latency: 2,
-                    },
-                );
+                let mut config = wgpu::SurfaceConfiguration {
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    format,
+                    width: physical_size.width,
+                    height: physical_size.height,
+                    present_mode: wgpu::PresentMode::AutoVsync,
+                    alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                    view_formats: vec![],
+                    desired_maximum_frame_latency: 2,
+                };
+
+                let format = config.format.remove_srgb_suffix();
+                config.format = format;
+                config.view_formats.push(format);
+                surface.configure(&device, &config);
 
                 // Initialize scene and GUI controls
-                let scene = Scene::new(&device, format);
+                let scene = Scene::new(&device, &config, &queue);
                 let controls = Controls::new();
 
                 // Initialize iced
@@ -219,19 +221,21 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             window.scale_factor(),
                         );
 
-                        surface.configure(
-                            device,
-                            &wgpu::SurfaceConfiguration {
-                                format: *format,
-                                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                                width: size.width,
-                                height: size.height,
-                                present_mode: wgpu::PresentMode::AutoVsync,
-                                alpha_mode: wgpu::CompositeAlphaMode::Auto,
-                                view_formats: vec![],
-                                desired_maximum_frame_latency: 2,
-                            },
-                        );
+                        let mut config = wgpu::SurfaceConfiguration {
+                            format: *format,
+                            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                            width: size.width,
+                            height: size.height,
+                            present_mode: wgpu::PresentMode::AutoVsync,
+                            alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                            view_formats: vec![],
+                            desired_maximum_frame_latency: 2,
+                        };
+                        let format = config.format.remove_srgb_suffix();
+                        config.format = format;
+                        config.view_formats.push(format);
+
+                        surface.configure(device, &config);
 
                         *resized = false;
                     }
@@ -250,12 +254,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 .create_view(&wgpu::TextureViewDescriptor::default());
 
                             {
-                                // We clear the frame
-                                let mut render_pass =
-                                    Scene::clear(&view, &mut encoder, program.background_color());
-
-                                // Draw the scene
-                                scene.draw(&mut render_pass);
+                                scene.draw(program, &view, device, queue);
                             }
 
                             // And then iced on top
