@@ -1,9 +1,6 @@
-mod controls;
-mod scene;
-
-use controls::Controls;
 use iced_winit::winit::dpi::PhysicalSize;
-use scene::Scene;
+use render_playground::controls::Controls;
+use render_playground::scene::Scene;
 
 use iced_wgpu::graphics::Viewport;
 use iced_wgpu::{wgpu, Engine, Renderer};
@@ -24,6 +21,10 @@ use winit::{
 };
 
 use std::sync::Arc;
+use std::time::Instant;
+
+//TODO: toggle between polling and waiting
+//const POLL_SLEEP_TIME: time::Duration = time::Duration::from_micros(1_000_000 / 60);
 
 pub fn main() -> Result<(), winit::error::EventLoopError> {
     #[cfg(target_arch = "wasm32")]
@@ -57,6 +58,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             modifiers: ModifiersState,
             resized: bool,
             debug: Debug,
+            _begin: Instant,
         },
     }
 
@@ -133,7 +135,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     format,
                     width: physical_size.width,
                     height: physical_size.height,
-                    present_mode: wgpu::PresentMode::AutoVsync,
+                    present_mode: wgpu::PresentMode::Mailbox,
                     alpha_mode: wgpu::CompositeAlphaMode::Auto,
                     view_formats: vec![],
                     desired_maximum_frame_latency: 2,
@@ -162,6 +164,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 );
 
                 // You should change this if you want to render continuously
+                //event_loop.set_control_flow(ControlFlow::Poll);
                 event_loop.set_control_flow(ControlFlow::Wait);
 
                 *self = Self::Ready {
@@ -180,6 +183,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     viewport,
                     resized: false,
                     debug,
+                    _begin: Instant::now(),
                 };
             }
         }
@@ -206,6 +210,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 clipboard,
                 resized,
                 debug,
+                _begin,
             } = self
             else {
                 return;
@@ -226,7 +231,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                             width: size.width,
                             height: size.height,
-                            present_mode: wgpu::PresentMode::AutoVsync,
+                            present_mode: wgpu::PresentMode::Mailbox,
                             alpha_mode: wgpu::CompositeAlphaMode::Auto,
                             view_formats: vec![],
                             desired_maximum_frame_latency: 2,
@@ -242,6 +247,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
 
                     match surface.get_current_texture() {
                         Ok(frame) => {
+                            debug.render_started();
                             let mut encoder =
                                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                                     label: None,
@@ -254,9 +260,21 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 .create_view(&wgpu::TextureViewDescriptor::default());
 
                             {
-                                scene.draw(program, &view, device, queue);
+                                let aspect = window.inner_size().width as f32
+                                    / window.inner_size().height as f32;
+                                //let t = (Instant::now() - *begin).as_secs_f32();
+                                scene.draw(
+                                    program,
+                                    &view,
+                                    program.background_color().b * 4.,
+                                    aspect,
+                                    device,
+                                    queue,
+                                );
                             }
 
+                            debug.render_finished();
+                            //debug.render_started();
                             // And then iced on top
                             renderer.present(
                                 engine,
@@ -269,6 +287,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 viewport,
                                 &debug.overlay(),
                             );
+                            //debug.render_finished();
+                            //debug.render_finished();
 
                             // Then we submit the work
                             engine.submit(queue, encoder);
@@ -305,6 +325,15 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 WindowEvent::CloseRequested => {
                     event_loop.exit();
                 }
+                WindowEvent::KeyboardInput {
+                    event:
+                        winit::event::KeyEvent {
+                            logical_key: winit::keyboard::Key::Named(winit::keyboard::NamedKey::F12),
+                            state: winit::event::ElementState::Pressed,
+                            ..
+                        },
+                    ..
+                } => debug.toggle(),
                 _ => {}
             }
 
@@ -318,6 +347,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             // If there are events pending
             if !state.is_queue_empty() {
                 // We update iced
+                //debug.update_started();
                 let _ = state.update(
                     viewport.logical_size(),
                     cursor_position
@@ -332,11 +362,17 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     clipboard,
                     debug,
                 );
-
+                //debug.update_finished();
                 // and request a redraw
+                //
+                //window.request_redraw();
                 window.request_redraw();
             }
         }
+        //fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
+        //    //thread::sleep(POLL_SLEEP_TIME);
+        //    trace!("render {:?}", Instant::now());
+        //}
     }
 
     let mut runner = Runner::Loading;

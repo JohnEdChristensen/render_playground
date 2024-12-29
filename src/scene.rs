@@ -16,13 +16,13 @@ pub struct Scene {
 }
 
 impl Scene {
-    fn generate_matrix(aspect_ratio: f32) -> glam::Mat4 {
+    fn generate_matrix(aspect_ratio: f32, time: f32) -> glam::Mat4 {
         let projection = glam::Mat4::perspective_rh(consts::FRAC_PI_4, aspect_ratio, 1.0, 10.0);
         let view = glam::Mat4::look_at_rh(
             glam::Vec3::new(1.5f32, -5.0, 3.0),
             glam::Vec3::ZERO,
             glam::Vec3::Z,
-        );
+        ) * glam::Mat4::from_rotation_z(time);
         projection * view
     }
 }
@@ -112,7 +112,7 @@ impl Scene {
         );
 
         // Create other resources
-        let mx_total = Self::generate_matrix(config.width as f32 / config.height as f32);
+        let mx_total = Self::generate_matrix(config.width as f32 / config.height as f32, 0.);
         let mx_ref: &[f32; 16] = mx_total.as_ref();
         let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
@@ -234,9 +234,15 @@ impl Scene {
         &mut self,
         controls: &Controls,
         view: &wgpu::TextureView,
+        t: f32,
+        aspect: f32,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) {
+        let mx_total = Self::generate_matrix(aspect, t);
+        let mx_ref: &[f32; 16] = mx_total.as_ref();
+        queue.write_buffer(&self._uniform_buf, 0, bytemuck::cast_slice(mx_ref));
+
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
