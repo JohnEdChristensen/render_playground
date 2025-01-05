@@ -1,6 +1,7 @@
 use iced_winit::winit::dpi::PhysicalSize;
+use iced_winit::winit::keyboard::KeyCode;
+use log::info;
 use render_playground::controls::Controls;
-use render_playground::scene::Scene;
 
 use iced_wgpu::graphics::Viewport;
 use iced_wgpu::{wgpu, Engine, Renderer};
@@ -14,6 +15,7 @@ use iced_winit::runtime::Debug;
 use iced_winit::winit;
 use iced_winit::Clipboard;
 
+use render_playground::scene::{Scene, UnitScene};
 use winit::{
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoop},
@@ -51,6 +53,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
             engine: Engine,
             renderer: Renderer,
             scene: Scene,
+            sample_count: u32,
+            config: wgpu::SurfaceConfiguration,
+
             state: program::State<Controls>,
             cursor_position: Option<winit::dpi::PhysicalPosition<f64>>,
             clipboard: Clipboard,
@@ -108,7 +113,10 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             .request_device(
                                 &wgpu::DeviceDescriptor {
                                     label: None,
-                                    required_features: adapter_features & wgpu::Features::default(),
+                                    required_features: adapter_features
+                                        | wgpu::Features::default()
+                                        | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+                                        | wgpu::Features::POLYGON_MODE_LINE, // wireframe
                                     required_limits: wgpu::Limits::default(),
                                 },
                                 None,
@@ -137,7 +145,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     height: physical_size.height,
                     present_mode: wgpu::PresentMode::Mailbox,
                     alpha_mode: wgpu::CompositeAlphaMode::Auto,
-                    view_formats: vec![],
+                    view_formats: vec![format],
                     desired_maximum_frame_latency: 2,
                 };
 
@@ -146,8 +154,41 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 config.view_formats.push(format);
                 surface.configure(&device, &config);
 
+                let sample_flags = adapter.get_texture_format_features(format).flags;
+
+                let max_sample_count = {
+                    //if sample_flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_X16) {
+                    //    16
+                    //} else if sample_flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_X8)
+                    //{
+                    //    8
+                    //} else
+                    if sample_flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_X4) {
+                        4
+                    } else if sample_flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_X2)
+                    {
+                        2
+                    } else {
+                        1
+                    }
+                };
+
+                let sample_count = max_sample_count;
+                info!("multisampling count: {}", sample_count);
+
                 // Initialize scene and GUI controls
-                let scene = Scene::new(&device, &config, &queue);
+                //
+                //let scene = futures::futures::executor::block_on(async {
+                let scene = Scene::new(
+                    UnitScene::TerrainScene,
+                    &device,
+                    &config,
+                    &queue,
+                    sample_count,
+                );
+
+                // ObjScene::init(&device, &config, &queue, sample_count));
+                //});
                 let controls = Controls::new();
 
                 // Initialize iced
@@ -176,6 +217,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                     engine,
                     renderer,
                     scene,
+                    config,
+                    sample_count,
                     state,
                     cursor_position: None,
                     modifiers: ModifiersState::default(),
@@ -202,6 +245,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 format,
                 engine,
                 renderer,
+                sample_count,
+                config,
                 scene,
                 state,
                 viewport,
@@ -233,7 +278,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             height: size.height,
                             present_mode: wgpu::PresentMode::Mailbox,
                             alpha_mode: wgpu::CompositeAlphaMode::Auto,
-                            view_formats: vec![],
+                            view_formats: vec![*format],
                             desired_maximum_frame_latency: 2,
                         };
                         let format = config.format.remove_srgb_suffix();
@@ -241,6 +286,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         config.view_formats.push(format);
 
                         surface.configure(device, &config);
+
+                        scene.resize(size, device, &config);
 
                         *resized = false;
                     }
@@ -262,11 +309,13 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             {
                                 let aspect = window.inner_size().width as f32
                                     / window.inner_size().height as f32;
-                                //let t = (Instant::now() - *begin).as_secs_f32();
-                                scene.draw(
+
+                                scene.render(
                                     program,
                                     &view,
-                                    program.background_color().b * 4.,
+                                    program.camera,
+                                    program.zoom,
+                                    program.show_wireframe,
                                     aspect,
                                     device,
                                     queue,
@@ -276,6 +325,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                             debug.render_finished();
                             //debug.render_started();
                             // And then iced on top
+                            debug.startup_started();
                             renderer.present(
                                 engine,
                                 device,
@@ -287,6 +337,8 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                                 viewport,
                                 &debug.overlay(),
                             );
+
+                            debug.startup_finished();
                             //debug.render_finished();
                             //debug.render_finished();
 
@@ -328,12 +380,29 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 WindowEvent::KeyboardInput {
                     event:
                         winit::event::KeyEvent {
-                            logical_key: winit::keyboard::Key::Named(winit::keyboard::NamedKey::F12),
+                            physical_key: p_key,
+
                             state: winit::event::ElementState::Pressed,
                             ..
                         },
                     ..
-                } => debug.toggle(),
+                } => match p_key {
+                    winit::keyboard::PhysicalKey::Code(KeyCode::F12) => debug.toggle(),
+                    winit::keyboard::PhysicalKey::Code(KeyCode::Digit1) => {
+                        *scene =
+                            Scene::new(UnitScene::ObjScene, device, config, queue, *sample_count)
+                    }
+                    winit::keyboard::PhysicalKey::Code(KeyCode::Digit2) => {
+                        *scene = Scene::new(
+                            UnitScene::TerrainScene,
+                            device,
+                            config,
+                            queue,
+                            *sample_count,
+                        )
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
 
@@ -355,9 +424,9 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                         .map(mouse::Cursor::Available)
                         .unwrap_or(mouse::Cursor::Unavailable),
                     renderer,
-                    &Theme::Dark,
+                    &Theme::GruvboxLight,
                     &renderer::Style {
-                        text_color: Color::WHITE,
+                        text_color: Color::BLACK,
                     },
                     clipboard,
                     debug,

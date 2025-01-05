@@ -1,12 +1,4 @@
 
-// Vertex shader
-
-//struct Camera {
-//    view_proj: mat4x4<f32>,
-//}
-//@group(1) @binding(0)
-//var<uniform> camera: Camera;
-
 @group(1)@binding(0)
 var<uniform> view: mat4x4<f32>;
 
@@ -63,23 +55,15 @@ var s_diffuse: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var light = vec3<f32>(1000., 1000., 2000.);
 
-    var light_dir = normalize(light - in.position);
+    let tex = textureLoad(t_diffuse, vec2<i32>(in.tex_coords), 0);
+    let v = f32(tex.x) / 255.0;
+    //return vec4<f32>(1.0 - (v * 5.0), 1.0 - (v * 15.0), 1.0 - (v * 50.0), 1.0);
+    return tex;
+    //return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+}
 
-    var material = vec3<f32>(0.9, 0.4, 0.3);
-    var diffuse = clamp(dot(in.normal, light_dir), 0., 1.);
-
-    var view_dir = normalize(-in.position);
-    var half_dir = normalize(light_dir + view_dir);
-
-    var specAngle = max(dot(half_dir, in.normal), 0.0);
-    var shininess = 4.0;
-    var specular = pow(specAngle, shininess);
-
-    var ambient = 0.4 * vec3<f32>(0.9, 0.9, 0.8);
-
-    var color = (diffuse * material) + (ambient * material) + specular * vec3<f32>(1.0, 1.0, 0.9) * .1;
-
-    return vec4<f32>(color, 1.0);
+@fragment
+fn fs_wire(vertex: VertexOutput) -> @location(0) vec4<f32> {
+    return vec4<f32>(0.9, 0.1, 0.9, 1.0);
 }

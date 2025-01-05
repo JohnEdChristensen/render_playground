@@ -15,7 +15,9 @@ iced_widget = { version = "0.13.4", features = ["wgpu"] }
 iced_winit = { version = "0.13.0", features = ["debug"] }
 image = { version = "0.24",default-features=false, features = ["png","jpeg"] }
 log = "0.4.22"
-tobj = { version = "3.2", default-features = false, features = ["async"]}
+noise = { version = "0.9.0", features = ["images"] }
+tobj = { version = "3.2", default-features = false, features = ["async"] }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tracing-subscriber = {version = "0.3",featuers = ["env-filter"]}
 iced_wgpu = "0.13.5"
