@@ -2,12 +2,12 @@ use glam::Vec3;
 use iced_wgpu::wgpu::{self, Device, SurfaceConfiguration};
 use iced_winit::winit::dpi::PhysicalSize;
 use obj_scene::ObjScene;
-use terrain_scene::TerrainScene;
+use terrain::TerrainScene;
 
 use crate::controls::Controls;
 
 pub mod obj_scene;
-pub mod terrain_scene;
+pub mod terrain;
 
 #[derive(Clone, Copy)]
 pub enum UnitScene {

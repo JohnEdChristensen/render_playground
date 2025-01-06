@@ -157,13 +157,13 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
                 let sample_flags = adapter.get_texture_format_features(format).flags;
 
                 let max_sample_count = {
-                    //if sample_flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_X16) {
-                    //    16
-                    //} else if sample_flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_X8)
-                    //{
-                    //    8
-                    //} else
-                    if sample_flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_X4) {
+                    if sample_flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_X16) {
+                        16
+                    } else if sample_flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_X8)
+                    {
+                        8
+                    } else if sample_flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_X4)
+                    {
                         4
                     } else if sample_flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_X2)
                     {

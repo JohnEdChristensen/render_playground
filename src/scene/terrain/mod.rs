@@ -1,12 +1,11 @@
+use chunk::Chunk;
 use glam::{Mat4, Vec3};
 use iced_wgpu::wgpu::{self, util::DeviceExt, Device, SurfaceConfiguration};
 use iced_winit::winit::dpi::PhysicalSize;
-use image::{ImageBuffer, Luma};
-use noise::utils::*;
-use noise::{utils::PlaneMapBuilder, Fbm, Perlin};
+use noise::{Fbm, Perlin};
 use std::f32::consts::{self, PI};
 
-use crate::model::ModelVertex;
+pub mod chunk;
 use crate::{
     controls::Controls,
     model::{self, DrawModel, Vertex},
@@ -77,7 +76,7 @@ pub struct TerrainScene {
 
     instances: Vec<Instance>,
     instance_buffer: wgpu::Buffer,
-    obj_model: model::Model,
+    models: Vec<model::Model>,
     bind_group: wgpu::BindGroup,
     uniform_buf: wgpu::Buffer,
 
@@ -132,6 +131,17 @@ impl TerrainScene {
         queue: &wgpu::Queue,
         sample_count: u32,
     ) -> TerrainScene {
+        let instances = vec![Instance {
+            transform: Mat4::from_translation([0.0, 0.0, 0.0].into()),
+        }];
+
+        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance Buffer"),
+            contents: bytemuck::cast_slice(&instance_data),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -148,112 +158,19 @@ impl TerrainScene {
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
                         count: None,
                     },
                 ],
                 label: Some("texture_bind_group_layout"),
             });
 
-        let instances = vec![Instance {
-            transform: Mat4::from_translation([0.0, 0.0, 0.0].into()),
-        }];
-
-        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Instance Buffer"),
-            contents: bytemuck::cast_slice(&instance_data),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        //// Terrain gen
-        let height_map_res = 256;
-        let chunk_width = 100.;
-
-        let obj_model = {
-            let name = "terrain".to_string();
-            let vertices = [
-                [0.0f32, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0],
-                [1.0, 1.0, 0.0],
-            ];
-            let vertices: Vec<_> = vertices
-                .iter()
-                .map(|v| ModelVertex {
-                    position: [v[0] * chunk_width, v[1] * chunk_width, v[2] * chunk_width],
-                    tex_coords: [v[0] * height_map_res as f32, v[1] * height_map_res as f32],
-                    normal: [0., 0., 1.0],
-                })
-                .collect();
-            let indices = vec![0, 1, 2, 3, 2, 1];
-            let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("{:?} Vertex Buffer", name)),
-                contents: bytemuck::cast_slice(&vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-            let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("{:?} Index Buffer", name)),
-                contents: bytemuck::cast_slice(&indices),
-                usage: wgpu::BufferUsages::INDEX,
-            });
-
-            let fbm = Fbm::<Perlin>::new(0);
-
-            let noise = PlaneMapBuilder::new(&fbm)
-                .set_size(height_map_res, height_map_res)
-                .set_x_bounds(-5.0, 5.0)
-                .set_y_bounds(-5.0, 5.0)
-                .build();
-            let image: ImageBuffer<Luma<f32>, Vec<_>> = ImageBuffer::from_vec(
-                height_map_res as u32,
-                height_map_res as u32,
-                noise.iter().map(|f| 0.5 + *f as f32).collect(),
-            )
-            .expect("valid image");
-
-            let diffuse_texture = texture::Texture::from_image(
-                device,
-                queue,
-                &image.into(),
-                Some("Height Map Texture"),
-            )
-            .expect("valid texture");
-
-            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                    },
-                ],
-                label: None,
-            });
-
-            let material = model::Material {
-                name: name.clone(),
-                diffuse_texture,
-                bind_group,
-            };
-
-            log::info!("Mesh: {}", name);
-            model::Model {
-                meshes: vec![model::Mesh {
-                    name,
-                    vertex_buffer,
-                    index_buffer,
-                    num_elements: indices.len() as u32,
-                    material: 0,
-                }],
-                materials: vec![material],
-            }
-        };
-
+        let num_layers = 10;
+        let fbm = Fbm::<Perlin>::new(0);
+        let models: Vec<_> = (-num_layers..=num_layers)
+            .flat_map(|x| (-num_layers..=num_layers).map(move |y| (x, y)))
+            .map(|(x, y)| Chunk::new(x, y, &fbm, device, queue, &texture_bind_group_layout).model)
+            .collect();
         // Create pipeline layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: None,
@@ -301,7 +218,7 @@ impl TerrainScene {
             label: None,
         });
 
-        let shader = device.create_shader_module(wgpu::include_wgsl!("../shader/terrain.wgsl"));
+        let shader = device.create_shader_module(wgpu::include_wgsl!("../../shader/terrain.wgsl"));
 
         let vertex_buffers = [model::ModelVertex::desc(), InstanceRaw::desc()];
 
@@ -347,7 +264,10 @@ impl TerrainScene {
             },
             multiview: None,
         });
-        let pipeline_wire = if dbg!(device.features()).contains(wgpu::Features::POLYGON_MODE_LINE) {
+        let pipeline_wire = if device
+            .features()
+            .contains(wgpu::Features::POLYGON_MODE_LINE)
+        {
             let pipeline_wire = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: None,
                 layout: Some(&pipeline_layout),
@@ -399,7 +319,7 @@ impl TerrainScene {
         TerrainScene {
             instances,
             instance_buffer,
-            obj_model,
+            models,
             bind_group,
             depth_texture,
             uniform_buf,
@@ -492,21 +412,21 @@ impl TerrainScene {
             });
             rpass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             rpass.set_pipeline(&self.pipeline);
-            rpass.draw_model_instanced(
-                &self.obj_model,
-                0..self.instances.len() as u32,
-                &self.bind_group,
-            );
+            self.models.iter().for_each(|m| {
+                rpass.draw_model_instanced(m, 0..self.instances.len() as u32, &self.bind_group);
+            });
             if show_wireframe {
                 if let Some(ref pipe) = self.pipeline_wire {
                     rpass.set_pipeline(pipe);
-                    rpass.draw_model_instanced(
-                        &self.obj_model,
-                        0..self.instances.len() as u32,
-                        &self.bind_group,
-                    );
+                    self.models.iter().for_each(|m| {
+                        rpass.draw_model_instanced(
+                            m,
+                            0..self.instances.len() as u32,
+                            &self.bind_group,
+                        );
+                    });
                 };
-            };
+            }
         }
 
         queue.submit(Some(encoder.finish()));
