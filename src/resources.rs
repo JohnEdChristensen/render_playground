@@ -68,11 +68,12 @@ pub fn load_binary(path: &str, file_name: &str) -> anyhow::Result<Vec<u8>> {
 pub fn load_texture(
     path: &str,
     file_name: &str,
+    is_normal_map: bool,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
 ) -> anyhow::Result<texture::Texture> {
     let data = load_binary(path, file_name)?;
-    texture::Texture::from_bytes(device, queue, &data, file_name)
+    texture::Texture::from_bytes(device, queue, &data, file_name, is_normal_map)
 }
 
 pub fn load_model(
@@ -99,7 +100,8 @@ pub fn load_model(
 
     let mut materials = Vec::new();
     for m in obj_materials? {
-        let diffuse_texture = load_texture(file_path, &m.diffuse_texture, device, queue)?;
+        let diffuse_texture = load_texture(file_path, &m.diffuse_texture, false, device, queue)?;
+        let normal_texture = load_texture(file_path, &m.normal_texture, true, device, queue)?;
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout,
             entries: &[
@@ -111,6 +113,14 @@ pub fn load_model(
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&normal_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&normal_texture.sampler),
+                },
             ],
             label: None,
         });
@@ -118,6 +128,7 @@ pub fn load_model(
         materials.push(model::Material {
             name: m.name,
             diffuse_texture,
+            normal_texture,
             bind_group,
         })
     }
